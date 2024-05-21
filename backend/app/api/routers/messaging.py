@@ -18,7 +18,7 @@ class CallbackEvent(BaseModel):
             if nodes:
                 msg = f"Retrieved {len(nodes)} sources to use as context for the query"
             else:
-                msg = f"Retrieving context for query: '{self.payload.get('query_str')}'"
+                msg = f"Retrieving context for query: '{self.payload.get('query_str')}'" if self.payload.get("query_str") else ""
             return {
                 "type": "events",
                 "data": {"title": msg},

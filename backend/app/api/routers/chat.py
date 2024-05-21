@@ -121,12 +121,7 @@ async def chat(
         yield VercelStreamResponse.convert_data(
             {
                 "type": "sources",
-                "data": {
-                    "nodes": [
-                        _SourceNodes.from_source_node(node).dict()
-                        for node in response.source_nodes
-                    ]
-                },
+                "data": {"nodes": [_SourceNodes.from_source_node(node).model_dump() for node in response.source_nodes]},
             }
         )
 
