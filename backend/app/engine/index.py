@@ -2,7 +2,8 @@ import logging
 
 from llama_index.core.indices.vector_store import VectorStoreIndex
 
-from app.engine.utils import init_chroma_vector_store_from_env
+from app.engine.vectordb import get_vector_store
+
 
 logger = logging.getLogger("uvicorn")
 
@@ -16,7 +17,7 @@ def get_index():
     """
     logger.info("Connecting to index from ChromaDB...")
     # Initialize Chroma vector store
-    store = init_chroma_vector_store_from_env()
+    store = get_vector_store()
     # Create index from vector store
     index = VectorStoreIndex.from_vector_store(store)
     logger.info("Finished connecting to index from ChromaDB.")  # Connection successful

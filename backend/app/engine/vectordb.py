@@ -1,11 +1,10 @@
 import os
 from urllib.parse import urlparse
-
 import chromadb
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 
-def init_chroma_vector_store_from_env():
+def get_vector_store():
     """
     Initializes and returns a ChromaVectorStore object based on the environment variables.
 

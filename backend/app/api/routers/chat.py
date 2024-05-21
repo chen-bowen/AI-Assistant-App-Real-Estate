@@ -1,76 +1,148 @@
+from pydantic import BaseModel
+from typing import List, Any, Optional, Dict, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
-from llama_index.core.indices.vector_store import VectorStoreIndex
-from llama_index.core.llms import MessageRole
+from llama_index.core.chat_engine.types import BaseChatEngine
+from llama_index.core.schema import NodeWithScore
+from llama_index.core.llms import ChatMessage, MessageRole
+from app.engine import get_chat_engine
+from app.api.routers.vercel_response import VercelStreamResponse
+from app.api.routers.messaging import EventCallbackHandler
+from aiostream import stream
 
-from app.api.api_utils import build_context_from_index, build_message_sequence
-from app.api.schema import ChatMessages
-from app.clients.llm_client import LLMClient, get_llm
-from app.engine.index import get_index
-
-chat_router = APIRouter()
+chat_router = r = APIRouter()
 
 
-@chat_router.post("")
-async def chat(
-    request: Request,
-    data: ChatMessages,
-    index: VectorStoreIndex = Depends(get_index),
-    llm: LLMClient = Depends(get_llm),
-) -> StreamingResponse:
-    """
-    Handle the chat endpoint.
+class _Message(BaseModel):
+    role: MessageRole
+    content: str
 
-    This function receives a POST request with chat data and processes it using a chat engine.
-    It performs the following steps:
-    1. Check if any messages are provided. If not, raise an HTTPException with status code 400.
-    2. Get the last message from the provided data. If the last message is not from the user, raise an HTTPException with status code 400.
-    3. Convert the messages from the request to the ChatMessage type.
-    4. Query the chat engine using the last message content and the converted messages.
-    5. Stream the response to the client.
 
-    Parameters:
-    - request: The incoming fastAPI request object.
-    - data: The chat data received in the request.
-    - chat_engine: The chat engine to use for processing the chat data.
+class _ChatData(BaseModel):
+    messages: List[_Message]
 
-    Returns:
-    - A StreamingResponse object that streams the response to the client.
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "What standards for letters exist?",
+                    }
+                ]
+            }
+        }
 
-    Raises:
-    - HTTPException with status code 400 if no messages are provided or if the last message is not from the user.
-    """
+
+class _SourceNodes(BaseModel):
+    id: str
+    metadata: Dict[str, Any]
+    score: Optional[float]
+    text: str
+
+    @classmethod
+    def from_source_node(cls, source_node: NodeWithScore):
+        return cls(
+            id=source_node.node.node_id,
+            metadata=source_node.node.metadata,
+            score=source_node.score,
+            text=source_node.node.text,  # type: ignore
+        )
+
+    @classmethod
+    def from_source_nodes(cls, source_nodes: List[NodeWithScore]):
+        return [cls.from_source_node(node) for node in source_nodes]
+
+
+class _Result(BaseModel):
+    result: _Message
+    nodes: List[_SourceNodes]
+
+
+async def parse_chat_data(data: _ChatData) -> Tuple[str, List[ChatMessage]]:
     # check preconditions and get last message
     if len(data.messages) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No messages provided",
         )
-    # should be a user message
-    lastMessage = data.messages.pop()
-
-    # assert last message is from user
-    if lastMessage.role != MessageRole.USER:
+    last_message = data.messages.pop()
+    if last_message.role != MessageRole.USER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Last message must be from user",
         )
+    # convert messages coming from the request to type ChatMessage
+    messages = [
+        ChatMessage(
+            role=m.role,
+            content=m.content,
+        )
+        for m in data.messages
+    ]
+    return last_message.content, messages
 
-    # get context from index and last message
-    context = build_context_from_index(index, lastMessage)
-    # build message sequence
-    messages = build_message_sequence(data, context, lastMessage)
 
-    # stream chat
-    response = llm.stream_chat(messages)
+# streaming endpoint - delete if not needed
+@r.post("")
+async def chat(
+    request: Request,
+    data: _ChatData,
+    chat_engine: BaseChatEngine = Depends(get_chat_engine),
+):
+    last_message_content, messages = await parse_chat_data(data)
 
-    # stream response
-    async def event_generator():
-        for token in response:
-            # If client closes connection, stop sending events
-            if await request.is_disconnected():
-                break
-            yield token.delta
+    event_handler = EventCallbackHandler()
+    chat_engine.callback_manager.handlers.append(event_handler)  # type: ignore
+    response = await chat_engine.astream_chat(last_message_content, messages)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-    # return response.response
+    async def content_generator():
+        # Yield the text response
+        async def _text_generator():
+            async for token in response.async_response_gen():
+                yield VercelStreamResponse.convert_text(token)
+            # the text_generator is the leading stream, once it's finished, also finish the event stream
+            event_handler.is_done = True
+
+        # Yield the events from the event handler
+        async def _event_generator():
+            async for event in event_handler.async_event_gen():
+                event_response = event.to_response()
+                if event_response is not None:
+                    yield VercelStreamResponse.convert_data(event_response)
+
+        combine = stream.merge(_text_generator(), _event_generator())
+        async with combine.stream() as streamer:
+            async for item in streamer:
+                if await request.is_disconnected():
+                    break
+                yield item
+
+        # Yield the source nodes
+        yield VercelStreamResponse.convert_data(
+            {
+                "type": "sources",
+                "data": {
+                    "nodes": [
+                        _SourceNodes.from_source_node(node).dict()
+                        for node in response.source_nodes
+                    ]
+                },
+            }
+        )
+
+    return VercelStreamResponse(content=content_generator())
+
+
+# non-streaming endpoint - delete if not needed
+@r.post("/request")
+async def chat_request(
+    data: _ChatData,
+    chat_engine: BaseChatEngine = Depends(get_chat_engine),
+) -> _Result:
+    last_message_content, messages = await parse_chat_data(data)
+
+    response = await chat_engine.achat(last_message_content, messages)
+    return _Result(
+        result=_Message(role=MessageRole.ASSISTANT, content=response.response),
+        nodes=_SourceNodes.from_source_nodes(response.source_nodes),
+    )

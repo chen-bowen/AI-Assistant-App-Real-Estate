@@ -4,7 +4,11 @@
       "/*": [
         "./cache/**/*"
       ]
-    }
+    },
+    "serverComponentsExternalPackages": [
+      "sharp",
+      "onnxruntime-node"
+    ]
   },
   "output": "export",
   "images": {

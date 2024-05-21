@@ -1,8 +1,6 @@
 "use client";
 
 import { useChat } from "ai/react";
-import { useMemo } from "react";
-import { insertDataIntoMessages } from "./transform";
 import { ChatInput, ChatMessages } from "./ui/chat";
 
 export default function ChatSection() {
@@ -14,22 +12,22 @@ export default function ChatSection() {
     handleInputChange,
     reload,
     stop,
-    data,
   } = useChat({
     api: process.env.NEXT_PUBLIC_CHAT_API,
     headers: {
       "Content-Type": "application/json", // using JSON because of vercel/ai 2.2.26
     },
+    onError: (error: unknown) => {
+      if (!(error instanceof Error)) throw error;
+      const message = JSON.parse(error.message);
+      alert(message.detail);
+    },
   });
-
-  const transformedMessages = useMemo(() => {
-    return insertDataIntoMessages(messages, data);
-  }, [messages, data]);
 
   return (
     <div className="space-y-4 max-w-5xl w-full">
       <ChatMessages
-        messages={transformedMessages}
+        messages={messages}
         isLoading={isLoading}
         reload={reload}
         stop={stop}
@@ -39,7 +37,7 @@ export default function ChatSection() {
         handleSubmit={handleSubmit}
         handleInputChange={handleInputChange}
         isLoading={isLoading}
-        multiModal={process.env.NEXT_PUBLIC_MODEL === "gpt-4-vision-preview"}
+        multiModal={true}
       />
     </div>
   );

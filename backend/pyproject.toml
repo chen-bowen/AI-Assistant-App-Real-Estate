@@ -3,21 +3,21 @@
 name = "app"
 version = "0.1.0"
 description = ""
-authors = ["Bowen Chen <chenbowen184@gmail.com>"]
+authors = ["Marcus Schiesser <mail@marcusschiesser.de>"]
 readme = "README.md"
+
+[tool.poetry.scripts]
+generate = "app.engine.generate:generate_datasource"
 
 [tool.poetry.dependencies]
 python = "^3.11,<3.12"
 fastapi = "^0.109.1"
 python-dotenv = "^1.0.0"
-llama-index = "0.10.15"
-llama-index-core = "0.10.15"
-llama-index-agent-openai = "0.1.5"
-arxiv = "^2.0.0"
-fire = "^0.4.0"
+aiostream = "^0.5.2"
+llama-index = "0.10.28"
+llama-index-core = "0.10.28"
 chromadb = "^0.4.0"
 llama-index-vector-stores-chroma = "^0.1.1"
-sse-starlette = "^0.2.0"
 
 [tool.poetry.dependencies.uvicorn]
 extras = ["standard"]
@@ -26,11 +26,11 @@ version = "^0.23.2"
 [tool.poetry.dependencies.llama-index-vector-stores-postgres]
 version = "^0.1.1"
 
-[tool.poetry.dependencies.llama-index-vector-stores-pinecone]
-version = "^0.1.3"
-
 [tool.poetry.dependencies.docx2txt]
 version = "^0.8"
+
+[tool.poetry.dependencies.llama-index-agent-openai]
+version = "0.2.2"
 
 [build-system]
 requires = ["poetry-core"]
