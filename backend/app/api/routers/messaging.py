@@ -94,8 +94,8 @@ class EventCallbackHandler(BaseCallbackHandler):
         ignored_events = [
             CBEventType.CHUNKING,
             CBEventType.NODE_PARSING,
-            CBEventType.EMBEDDING,
-            CBEventType.LLM,
+            # CBEventType.EMBEDDING,
+            # CBEventType.LLM,
             CBEventType.TEMPLATING,
         ]
         super().__init__(ignored_events, ignored_events)

@@ -35,8 +35,9 @@ def embedding_config_from_env() -> Dict:
 
 def init_settings():
     embedding_configs = embedding_config_from_env()
+    llm_configs = llm_config_from_env()
     Settings.embed_model = EmebeddingsClient(**embedding_configs)
-    Settings.llm = LLMClient(model=os.getenv("LLM_MODEL"))
+    Settings.llm = LLMClient(**llm_configs)
 
     Settings.chunk_size = int(os.getenv("CHROMA_CHUNK_SIZE"))
     Settings.chunk_overlap = int(os.getenv("CHUNK_OVERLAP"))
